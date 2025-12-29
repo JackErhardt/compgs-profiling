@@ -297,6 +297,39 @@ class GaussianModel(nn.Module):
         self.init_params = True
         self.logger.info(f'Initialized {self.num_anchor_primitive} anchor primitives by sparse points and voxel size {self.voxel_size}.')
 
+    def init_from_dataset(self, dataset, percent_dense_points: float = 100.0) -> None:
+        """
+        Initialize primitives from dataset.
+        :param dataset: dataset containing point cloud.
+        :param percent_dense_points: percent of points in the dataset point cloud to initialize the gaussian splat with.
+        """
+        if dataset.point_cloud is not None:
+            sfm_points, sfm_colors = dataset.point_cloud
+        else:
+            raise ValueError("Dataset does not contain point cloud data.")
+
+        assert sfm_points.shape[0] == sfm_colors.shape[0], 'Number of points and colors should be the same.'
+        assert sfm_points.shape[1] == sfm_colors.shape[1] == 3, 'Only support 3D points and RGB colors.'
+        
+        if percent_dense_points < 100:
+            num_points = sfm_points.shape[0]
+            num_keep = int(num_points * percent_dense_points / 100)
+            indices = np.random.choice(num_points, num_keep, replace=False)
+            sfm_points = sfm_points[indices]
+            sfm_colors = sfm_colors[indices]
+            self.logger.info(f'Randomly selected {percent_dense_points}% of points: {num_keep} / {num_points}')
+
+        self.logger.info(f'Loaded sparse point clouds from dataset...')
+
+        self.voxel_size = self.voxel_size or adaptive_voxel_size(sfm_points)
+
+        # init Gaussian data
+        points = voxelize_sample(sfm_points, voxel_size=self.voxel_size)
+        self.gaussian_params.init_from_sparse_points(points=points)
+
+        self.init_params = True
+        self.logger.info(f'Initialized {self.num_anchor_primitive} anchor primitives by sparse points and voxel size {self.voxel_size}.')
+
     @torch.no_grad()
     def save_compressed_params(self, npz_path: str, gpcc_codec_path: str) -> dict[str, float]:
         """

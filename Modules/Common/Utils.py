@@ -47,6 +47,19 @@ class CustomLogger:
         if print_:
             print(msg)
 
+    def warning(self, msg: str, print_: bool = True, force_enable: bool = False) -> None:
+        """
+        Record warning information.
+        :param msg: message to be recorded.
+        :param print_: whether to print the message.
+        :param force_enable: whether to force enable logging.
+        """
+        if not self.enable_log or (not self.enable_detail_log and not force_enable):
+            return
+        self.text_logger.warning(msg)
+        if print_:
+            print(f"WARNING: {msg}")
+
     def add_scalar(self, tag: str, scalar_value: float, global_step: int) -> None:
         """
         Wrapper to add scalar to tensorboard.

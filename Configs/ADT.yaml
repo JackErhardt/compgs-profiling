@@ -1,6 +1,11 @@
 dataset:
-  root: XXX  # Path to the dataset
-  image_folder: XXX  # name of the image folder
+  root: /nfs/turbo/coe-vlsisp/erharj/datasets/ADT # Path to the dataset
+  sfm_type: aria  # Type of dataset: aria
+  vrs_path: video.vrs  # Path to the VRS file
+  closedloop_path: mps/slam/closed_loop_trajectory.csv  # Path to the closed loop trajectory CSV file
+  image_folder: images  # name of the image folder
+  percent_dense_points: 10 # Percent of points in the dataset point cloud to initialize the gaussian splat with
+  eval_interval: -1 # Evaluate all training views
 
 training:
   gpu: true  # Use GPU
@@ -10,15 +15,15 @@ training:
   ssim_weight: 0.2  # Weight of SSIM loss
   lambda_weight: 0.001  # Lagrange multiplier for RD loss
 
-  save_directory: XXX  # Path to save the experiment
+  save_directory: /nfs/turbo/coe-vlsisp/erharj/gaussian_splatting/compgs-profiling/output  # Path to save the experiment
 
-  save_interval: 10000  # Interval for saving checkpoints
+  save_interval: 3000  # Interval for saving checkpoints
 
   disable_logging: true  # Disable logging, note that enabling logging will slow down the training
 
   rate_loss_start_iteration: 3000  # Start iteration for rate loss
 
-  gpcc_codec_path: XXX  # Path to the GPCC codec
+  gpcc_codec_path: /nfs/turbo/coe-vlsisp/erharj/gaussian_splatting/libraries/mpeg-pcc-tmc13/build/tmc3/tmc3  # Path to the GPCC codec
 
   lr:  # Learning rate
     gaussian:  # Gaussian parameters

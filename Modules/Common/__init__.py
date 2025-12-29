@@ -1,7 +1,7 @@
 from .AuxiliaryFunctions import calculate_morton_order, compress_gpcc, decompress_gpcc
 from .AuxiliaryFunctions import voxelize_sample, adaptive_voxel_size, load_point_clouds, save_point_clouds
 from .DataStructure import GaussianParameters, RenderSettings, RenderResults, LearningRateUpdateConfig, Sample
-from .Datasets import BaseDataset
+from .Datasets import BaseDataset, AriaDataset
 from .Utils import CustomLogger, init
 
 aux_functions = [
@@ -16,6 +16,7 @@ aux_functions = [
 
 datasets = [
     'BaseDataset',
+    'AriaDataset',
 ]
 
 data_structures = [

@@ -79,6 +79,15 @@ class _RasterizeGaussians(torch.autograd.Function):
             raster_settings.debug
         )
 
+        # Debugging memory usage
+        print(f"Rasterize Forward Inputs: means3D={means3D.shape}, opacities={opacities.shape}")
+        if colors_precomp is not None and colors_precomp.numel() > 0: print(f"colors_precomp={colors_precomp.shape}")
+        if scales is not None and scales.numel() > 0: print(f"scales={scales.shape}")
+        if rotations is not None and rotations.numel() > 0: print(f"rotations={rotations.shape}")
+        if sh is not None and sh.numel() > 0: print(f"sh={sh.shape}")
+        print(f"Rasterize Forward Settings: H={raster_settings.image_height}, W={raster_settings.image_width}")
+        print(f"Rasterize Forward Pre-C++: Allocated {torch.cuda.memory_allocated() / 1024**3:.2f} GB, Reserved {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
+
         # Invoke C++/CUDA rasterizer
         if raster_settings.debug:
             cpu_args = cpu_deep_copy_tuple(args) # Copy them before they can be corrupted

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import torch
@@ -34,7 +35,7 @@ class LearningRateUpdateConfig:
 
 @dataclass
 class DatasetSample:
-    img: torch.Tensor  # image, shape (3, H, W)
+    img: Optional[torch.Tensor]  # image, shape (3, H, W)
     img_height: int  # image height
     img_width: int  # image width
     img_name: str  # image name
@@ -53,6 +54,8 @@ class DatasetSample:
     world_to_view_proj_mat: torch.Tensor  # world to view projection matrix, shape (4, 4)
     world_to_image_proj_mat: torch.Tensor  # world to image projection matrix, shape (4, 4)
     perspective_proj_mat: torch.Tensor  # perspective matrix, shape (4, 4)
+    
+    alpha_mask: Optional[torch.Tensor] = None  # alpha mask, shape (1, H, W)
 
 
 @dataclass
@@ -67,6 +70,7 @@ class Sample:
     world_to_view_proj_mat: torch.Tensor  # world to view projection matrix, shape (4, 4)
     world_to_image_proj_mat: torch.Tensor  # world to image projection matrix, shape (4, 4)
     screen_extent: float  # radius of the sphere that contains all camera centers
+    alpha_mask: Optional[torch.Tensor] = None  # alpha mask, shape (1, H, W)
 
 
 @dataclass

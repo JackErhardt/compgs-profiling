@@ -10,7 +10,7 @@ from pytorch_msssim import ssim
 from torch.nn import functional as F
 from tqdm import tqdm
 
-from Modules.Common import BaseDataset, RenderSettings, RenderResults, Sample, init
+from Modules.Common import BaseDataset, AriaDataset, RenderSettings, RenderResults, Sample, init
 from Modules.GaussianModels import GaussianModel
 from Modules.Optimization import AdaptiveControl, WarpedAdam, update_lr_means
 
@@ -21,6 +21,7 @@ class TrainerCompGS:
         :param config_path: configuration yaml filepath
         :param override_cfgs: override configurations passed in command line
         """
+        print("Initializing TrainerCompGS...")
         self.configs, self.logger, self.experiment_dir = init(config_path=config_path, override_cfgs=override_cfgs)
         self.logger.info(f'\nTrainer: {type(self).__name__}\n')
 
@@ -30,7 +31,24 @@ class TrainerCompGS:
         self.device = 'cuda' if self.configs['training']['gpu'] else 'cpu'
 
         # init train / eval dataset
-        self.dataset = BaseDataset(root=self.configs['dataset']['root'], image_folder=self.configs['dataset']['image_folder'], logger=self.logger, device=self.device)
+        if self.configs['dataset']['sfm_type'] == 'aria':
+            self.dataset = AriaDataset(
+                root=self.configs['dataset']['root'],
+                vrs_path=self.configs['dataset']['vrs_path'],
+                closedloop_path=self.configs['dataset']['closedloop_path'],
+                image_folder=self.configs['dataset']['image_folder'],
+                logger=self.logger,
+                device=self.device,
+                eval_interval=self.configs['dataset']['eval_interval']
+            )
+        else:
+            self.dataset = BaseDataset(
+                root=self.configs['dataset']['root'],
+                image_folder=self.configs['dataset']['image_folder'],
+                logger=self.logger,
+                device=self.device,
+                eval_interval=self.configs['dataset']['eval_interval']
+            )
 
         # init Gaussian model
         self.gaussian_model = GaussianModel(
@@ -41,7 +59,8 @@ class TrainerCompGS:
         )
 
         # init gaussian model with sparse point clouds
-        self.gaussian_model.init_from_sfm(sfm_point_cloud_path=self.dataset.sfm_point_cloud_path)
+        percent_dense_points = self.configs['dataset']['percent_dense_points']
+        self.gaussian_model.init_from_dataset(self.dataset, percent_dense_points=percent_dense_points)
 
         # init optimizer
         self.gaussian_optimizer, self.aux_optimizer = self.init_optimizers()
@@ -57,6 +76,12 @@ class TrainerCompGS:
         )
 
         self.gpcc_codec_path = self.configs['training']['gpcc_codec_path']
+        print("TrainerCompGS initialized.")
+
+    def print_gpu_memory(self, tag=""):
+        allocated = torch.cuda.memory_allocated() / 1024**3
+        reserved = torch.cuda.memory_reserved() / 1024**3
+        print(f"[{tag}] GPU Memory: Allocated {allocated:.2f} GB, Reserved {reserved:.2f} GB")
 
     def train(self) -> None:
         """
@@ -66,9 +91,12 @@ class TrainerCompGS:
         self.dataset.train()
         start_iteration = self.load_checkpoint()
 
+        print("Starting training loop...")
+        self.print_gpu_memory("Start Train")
         torch.cuda.synchronize()
         start_time = time.perf_counter()
         for iteration in tqdm(range(start_iteration, self.configs['training']['max_iterations'] + 1), ncols=50):
+            if iteration % 10 == 0: print(f"Iteration {iteration}: Start")
             # randomly select a view to render
             sample = self.dataset[0]
 
@@ -82,19 +110,30 @@ class TrainerCompGS:
                 viewmatrix=sample.world_to_view_proj_mat, projmatrix=sample.world_to_image_proj_mat)
 
             retain_grad = iteration < self.configs['adaptive_control']['stop_iteration']
+            if iteration % 10 == 0: 
+                print(f"Iteration {iteration}: Rendering...")
+                self.print_gpu_memory(f"Iter {iteration} Pre-Render")
+            
             render_results = self.gaussian_model.render(render_settings=render_settings, retain_grad=retain_grad)
+            if iteration % 10 == 0: print(f"Iteration {iteration}: Render done")
 
             # backward
             backward_results = self.backward(iteration=iteration, sample=sample, render_results=render_results)
+            if iteration % 10 == 0: print(f"Iteration {iteration}: Backward done")
 
             # record
             self.record(iteration=iteration, backward_results=backward_results, render_results=render_results, sample=sample)
 
             # optimize Gaussian parameters
             self.optimize(iteration=iteration, render_results=render_results)
+            if iteration % 10 == 0: print(f"Iteration {iteration}: Optimize done")
 
             # save checkpoints
             self.save_checkpoints(iteration=iteration)
+
+            # release memory
+            del sample
+            torch.cuda.empty_cache()
         torch.cuda.synchronize()
         end_time = time.perf_counter()
         training_time = (end_time - start_time) / 60  # minutes
@@ -162,6 +201,10 @@ class TrainerCompGS:
 
             per_view_record[f'view_{view_idx}'] = psnr.item()
 
+            # release memory
+            del sample
+            torch.cuda.empty_cache()
+
         results = {'per_view': per_view_record, 'test_time': eval_time, 'average': sum([per_view_record[key] for key in per_view_record]) / len(per_view_record)}
 
         # save evaluation results
@@ -212,8 +255,16 @@ class TrainerCompGS:
         """
         # calculate rendering loss
         ssim_weight = self.configs['training']['ssim_weight']
-        l1_loss = F.l1_loss(render_results.rendered_img, sample.img)
-        ssim_loss = 1 - ssim(render_results.rendered_img.unsqueeze(dim=0), sample.img.unsqueeze(dim=0), data_range=1., size_average=True)
+        
+        gt_img = sample.img
+        pred_img = render_results.rendered_img
+        
+        if sample.alpha_mask is not None:
+            gt_img = gt_img * sample.alpha_mask + (1 - sample.alpha_mask)
+            pred_img = pred_img * sample.alpha_mask + (1 - sample.alpha_mask)
+
+        l1_loss = F.l1_loss(pred_img, gt_img)
+        ssim_loss = 1 - ssim(pred_img.unsqueeze(dim=0), gt_img.unsqueeze(dim=0), data_range=1., size_average=True)
         rendering_loss = (1 - ssim_weight) * l1_loss + ssim_weight * ssim_loss
 
         # calculate regularization loss
@@ -229,6 +280,7 @@ class TrainerCompGS:
         loss = rendering_loss + reg_loss + (rate_loss if iteration > self.configs['training']['rate_loss_start_iteration'] else 0.)
 
         # backward
+        self.print_gpu_memory("Pre-Backward")
         loss.backward()
 
         # calculate auxiliary loss
