@@ -21,7 +21,7 @@ class TrainerCompGS:
         :param config_path: configuration yaml filepath
         :param override_cfgs: override configurations passed in command line
         """
-        print("Initializing TrainerCompGS...")
+        # print("Initializing TrainerCompGS...")
         self.configs, self.logger, self.experiment_dir = init(config_path=config_path, override_cfgs=override_cfgs)
         self.logger.info(f'\nTrainer: {type(self).__name__}\n')
 
@@ -76,7 +76,7 @@ class TrainerCompGS:
         )
 
         self.gpcc_codec_path = self.configs['training']['gpcc_codec_path']
-        print("TrainerCompGS initialized.")
+        # print("TrainerCompGS initialized.")
 
     def print_gpu_memory(self, tag=""):
         allocated = torch.cuda.memory_allocated() / 1024**3
@@ -91,12 +91,12 @@ class TrainerCompGS:
         self.dataset.train()
         start_iteration = self.load_checkpoint()
 
-        print("Starting training loop...")
-        self.print_gpu_memory("Start Train")
+        # print("Starting training loop...")
+        # self.print_gpu_memory("Start Train")
         torch.cuda.synchronize()
         start_time = time.perf_counter()
         for iteration in tqdm(range(start_iteration, self.configs['training']['max_iterations'] + 1), ncols=50):
-            if iteration % 10 == 0: print(f"Iteration {iteration}: Start")
+            # if iteration % 10 == 0: print(f"Iteration {iteration}: Start")
             # randomly select a view to render
             sample = self.dataset[0]
 
@@ -110,23 +110,23 @@ class TrainerCompGS:
                 viewmatrix=sample.world_to_view_proj_mat, projmatrix=sample.world_to_image_proj_mat)
 
             retain_grad = iteration < self.configs['adaptive_control']['stop_iteration']
-            if iteration % 10 == 0: 
-                print(f"Iteration {iteration}: Rendering...")
-                self.print_gpu_memory(f"Iter {iteration} Pre-Render")
+            # if iteration % 10 == 0: 
+            #     print(f"Iteration {iteration}: Rendering...")
+            #     self.print_gpu_memory(f"Iter {iteration} Pre-Render")
             
             render_results = self.gaussian_model.render(render_settings=render_settings, retain_grad=retain_grad)
-            if iteration % 10 == 0: print(f"Iteration {iteration}: Render done")
+            # if iteration % 10 == 0: print(f"Iteration {iteration}: Render done")
 
             # backward
             backward_results = self.backward(iteration=iteration, sample=sample, render_results=render_results)
-            if iteration % 10 == 0: print(f"Iteration {iteration}: Backward done")
+            # if iteration % 10 == 0: print(f"Iteration {iteration}: Backward done")
 
             # record
             self.record(iteration=iteration, backward_results=backward_results, render_results=render_results, sample=sample)
 
             # optimize Gaussian parameters
             self.optimize(iteration=iteration, render_results=render_results)
-            if iteration % 10 == 0: print(f"Iteration {iteration}: Optimize done")
+            # if iteration % 10 == 0: print(f"Iteration {iteration}: Optimize done")
 
             # save checkpoints
             self.save_checkpoints(iteration=iteration)
@@ -139,7 +139,7 @@ class TrainerCompGS:
         training_time = (end_time - start_time) / 60  # minutes
 
         # evaluate the model
-        self.eval()
+        # self.eval()
 
         # compress the model and save weights
         compression_results = self.compress_gaussians()
@@ -325,7 +325,8 @@ class TrainerCompGS:
         ckpt_folder = os.path.join(self.checkpoints_dir, f'iteration_{iteration}')
         os.makedirs(ckpt_folder, exist_ok=True)
         self.gaussian_model.save_uncompressed_params(os.path.join(ckpt_folder, 'point_cloud.ply'))
-        self.gaussian_model.save_weights(os.path.join(ckpt_folder, 'weights.pth'))
+        self.gaussian_model.save_weights(os.path.join(ckpt_folder, 'weights.pth'), update_entropy_model=True)
+        self.gaussian_model.save_compressed_params(os.path.join(ckpt_folder, 'bitstreams.npz'), gpcc_codec_path=self.gpcc_codec_path)
 
     def optimize(self, iteration: int, render_results: RenderResults) -> None:
         """

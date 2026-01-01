@@ -454,7 +454,7 @@ class GaussianModel(nn.Module):
         """
         assert weight_path.endswith('.pth'), 'Only support pth file.'
         if update_entropy_model:
-            assert self.network.update(), 'Entropy model is not updated.'
+            self.network.update(force=True)
 
         state_dicts = self.network.state_dict()
         torch.save(state_dicts, weight_path)

@@ -32,6 +32,6 @@ if __name__ == "__main__":
     trainer = TrainerCompGS(config_path=args.config, override_cfgs=override_cfgs)
     trainer.train()
 
-    # test Gaussian model
-    tester = TesterCompGS(trainer=trainer)
-    tester.eval()
+    # # test Gaussian model
+    # tester = TesterCompGS(trainer=trainer)
+    # tester.eval()
