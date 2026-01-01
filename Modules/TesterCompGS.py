@@ -23,18 +23,21 @@ class TesterCompGS:
             self.eval_dataset = trainer.dataset
             self.gaussian_model = trainer.gaussian_model
             self.gpcc_codec_path = trainer.gpcc_codec_path
+            self.eval_lpips = kwargs['eval_lpips']
         else:  # use custom configurations
             self.device = device
             self.experiment_root = experiment_root
             self.eval_dataset = dataset
             self.gaussian_model = self.init_gaussian_model(kwargs)
             self.gpcc_codec_path = kwargs['gpcc_codec_path']
+            self.eval_lpips = kwargs['eval_lpips']
 
         # load Gaussian model
         decompression_time = self.load_gaussian_model()  # minutes
 
         # load LPIPS model for evaluation
-        self.lpips_model = lpips.LPIPS(net='vgg', version='0.1', verbose=False).eval().to(self.device)
+        if self.eval_lpips:
+            self.lpips_model = lpips.LPIPS(net='vgg', version='0.1', verbose=False).eval().to(self.device)
 
         # create folder to store original and rendered images
         self.eval_results_folder = os.path.join(self.experiment_root, 'eval')
@@ -80,8 +83,9 @@ class TesterCompGS:
 
         # calculate average quality scores
         avg_recoder = {'PSNR': sum([per_view_record[key]['PSNR'] for key in per_view_record]) / len(per_view_record),
-                       'SSIM': sum([per_view_record[key]['SSIM'] for key in per_view_record]) / len(per_view_record),
-                       'LPIPS': sum([per_view_record[key]['LPIPS'] for key in per_view_record]) / len(per_view_record)}
+                       'SSIM': sum([per_view_record[key]['SSIM'] for key in per_view_record]) / len(per_view_record)}
+        if self.eval_lpips:
+            avg_recoder['LPIPS'] = sum([per_view_record[key]['LPIPS'] for key in per_view_record]) / len(per_view_record)
 
         # save evaluation results
         self.records.update({'per_view': per_view_record, 'average': avg_recoder, 'render_time': total_render_time / len(self.eval_dataset)})
@@ -161,7 +165,9 @@ class TesterCompGS:
         # calculate rendering SSIM score
         ssim_score = ssim(original_img, rendered_img, data_range=1., size_average=True).item()
 
+        quality_scores = {'PSNR': psnr, 'SSIM': ssim_score}
         # calculate rendering LPIPS score
-        lpips_score = self.lpips_model(original_img.to(self.device), rendered_img.to(self.device)).item()
+        if self.eval_lpips:
+            quality_scores['LPIPS'] = self.lpips_model(original_img.to(self.device), rendered_img.to(self.device)).item()
 
-        return {'PSNR': psnr, 'SSIM': ssim_score, 'LPIPS': lpips_score}
+        return quality_scores

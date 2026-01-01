@@ -5,7 +5,7 @@ dataset:
   closedloop_path: mps/slam/closed_loop_trajectory.csv  # Path to the closed loop trajectory CSV file
   image_folder: images  # name of the image folder
   percent_dense_points: 10 # Percent of points in the dataset point cloud to initialize the gaussian splat with
-  eval_interval: -1 # Evaluate all training views
+  eval_interval: 64 # Evaluate all training views
 
 training:
   gpu: true  # Use GPU
@@ -22,6 +22,8 @@ training:
   disable_logging: true  # Disable logging, note that enabling logging will slow down the training
 
   rate_loss_start_iteration: 3000  # Start iteration for rate loss
+
+  eval_lpips: false # Evaluate LPIPS score
 
   gpcc_codec_path: /nfs/turbo/coe-vlsisp/erharj/gaussian_splatting/libraries/mpeg-pcc-tmc13/build/tmc3/tmc3  # Path to the GPCC codec
 
