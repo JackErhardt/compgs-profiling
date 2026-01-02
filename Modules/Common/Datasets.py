@@ -104,7 +104,8 @@ class BaseDataset(Dataset):
                         tan_half_fov_x=sample.tan_half_fov_x, tan_half_fov_y=sample.tan_half_fov_y,
                         camera_center=sample.camera_center, cam_idx=sample.cam_idx, screen_extent=self.screen_extent,
                         world_to_view_proj_mat=sample.world_to_view_proj_mat,
-                        world_to_image_proj_mat=sample.world_to_image_proj_mat)
+                        world_to_image_proj_mat=sample.world_to_image_proj_mat,
+                        img_name=sample.img_name)
         return sample
 
     def __len__(self) -> int:

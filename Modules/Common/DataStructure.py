@@ -70,6 +70,7 @@ class Sample:
     world_to_view_proj_mat: torch.Tensor  # world to view projection matrix, shape (4, 4)
     world_to_image_proj_mat: torch.Tensor  # world to image projection matrix, shape (4, 4)
     screen_extent: float  # radius of the sphere that contains all camera centers
+    img_name: str = ""  # image name
     alpha_mask: Optional[torch.Tensor] = None  # alpha mask, shape (1, H, W)
 
 

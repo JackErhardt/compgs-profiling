@@ -42,8 +42,8 @@ class TesterCompGS:
         # create folder to store original and rendered images
         self.eval_results_folder = os.path.join(self.experiment_root, 'eval')
         os.makedirs(self.eval_results_folder, exist_ok=True)
-        self.original_img_folder = os.path.join(self.eval_results_folder, 'original')
-        os.makedirs(self.original_img_folder, exist_ok=True)
+        # self.original_img_folder = os.path.join(self.eval_results_folder, 'original')
+        # os.makedirs(self.original_img_folder, exist_ok=True)
         self.rendered_img_folder = os.path.join(self.eval_results_folder, 'rendered')
         os.makedirs(self.rendered_img_folder, exist_ok=True)
 
@@ -69,17 +69,15 @@ class TesterCompGS:
             total_render_time += render_time
 
             # save original and rendered image
-            original_img_path = os.path.join(self.original_img_folder, f'{view_idx:04d}.png')
-            original_img = Image.fromarray((sample.img.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8))
-            original_img.save(original_img_path)
+            original_img_path = os.path.join(self.eval_dataset.image_folder, sample.img_name)
 
-            rendered_img_path = os.path.join(self.rendered_img_folder, f'{view_idx:04d}.png')
+            rendered_img_path = os.path.join(self.rendered_img_folder, sample.img_name)
             rendered_img = Image.fromarray((rendered_img.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8))
             rendered_img.save(rendered_img_path)
 
             # calculate quality scores
             quality_scores = self.calculate_quality_scores(original_img_path=original_img_path, rendered_img_path=rendered_img_path)
-            per_view_record[f'view_{view_idx:04d}'] = quality_scores
+            per_view_record[sample.img_name] = quality_scores
 
         # calculate average quality scores
         avg_recoder = {'PSNR': sum([per_view_record[key]['PSNR'] for key in per_view_record]) / len(per_view_record),
@@ -154,20 +152,43 @@ class TesterCompGS:
     @torch.no_grad()
     def calculate_quality_scores(self, original_img_path: str, rendered_img_path: str) -> dict:
         # load original and rendered images
-        original_img, rendered_img = Image.open(original_img_path), Image.open(rendered_img_path)
+        original_img_pil = Image.open(original_img_path)
+        original_img_np = np.array(original_img_pil)
+
+        if original_img_np.shape[2] == 4:
+            alpha_mask = torch.tensor(original_img_np[:, :, 3:4].transpose(2, 0, 1) / 255., dtype=torch.float, device=self.device)
+            original_img = torch.tensor(original_img_np[:, :, :3].transpose(2, 0, 1) / 255., dtype=torch.float, device=self.device).clamp_(min=0., max=1.)
+        else:
+            original_img = torch.tensor(original_img_np.transpose(2, 0, 1) / 255., dtype=torch.float, device=self.device).clamp_(min=0., max=1.)
+            alpha_mask = torch.ones((1, original_img.shape[1], original_img.shape[2]), dtype=torch.float, device=self.device)
+
+        rendered_img = Image.open(rendered_img_path)
+        rendered_img = torch.from_numpy(np.array(rendered_img)).permute(2, 0, 1).float().to(self.device) / 255.
+
+        # Apply alpha mask for SSIM and LPIPS (blending with white background)
+        # This ensures standard input format for these metrics while handling transparency
+        original_img_blended = original_img * alpha_mask + (1 - alpha_mask)
+        rendered_img_blended = rendered_img * alpha_mask + (1 - alpha_mask)
+
+        # Add batch dimension for SSIM/LPIPS
+        original_img_blended = original_img_blended.unsqueeze(0)
+        rendered_img_blended = rendered_img_blended.unsqueeze(0)
 
         # calculate rendering PSNR
-        original_img = torch.from_numpy(np.array(original_img)).permute(2, 0, 1).float().unsqueeze(dim=0) / 255.
-        rendered_img = torch.from_numpy(np.array(rendered_img)).permute(2, 0, 1).float().unsqueeze(dim=0) / 255.
-        rendered_mse = F.mse_loss(original_img, rendered_img)
-        psnr = 10 * torch.log10(1. / rendered_mse).item()
+        # Use masked MSE to treat transparent pixels as "don't care"
+        # We calculate error only on pixels where alpha > 0, avoiding inflation from zero-error background
+        diff = (original_img - rendered_img) * alpha_mask
+        # Normalize by the number of valid pixels (sum of alpha channels * 3 for RGB)
+        mse = (diff ** 2).sum() / (alpha_mask.sum() * 3.0 + 1e-6)
+        psnr = 10 * torch.log10(1. / mse).item()
 
         # calculate rendering SSIM score
-        ssim_score = ssim(original_img, rendered_img, data_range=1., size_average=True).item()
+        # SSIM is computed on the white-blended images as it operates on windows
+        ssim_score = ssim(original_img_blended, rendered_img_blended, data_range=1., size_average=True).item()
 
         quality_scores = {'PSNR': psnr, 'SSIM': ssim_score}
         # calculate rendering LPIPS score
         if self.eval_lpips:
-            quality_scores['LPIPS'] = self.lpips_model(original_img.to(self.device), rendered_img.to(self.device)).item()
+            quality_scores['LPIPS'] = self.lpips_model(original_img_blended, rendered_img_blended).item()
 
         return quality_scores
