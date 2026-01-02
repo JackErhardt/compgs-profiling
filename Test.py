@@ -26,6 +26,8 @@ if __name__ == "__main__":
     parser.add_argument('--config', type=str, help='filepath of configuration files', required=True)
     parser.add_argument('--experiment_root', type=str, help='experiment root path', required=True)
     parser.add_argument('--device', type=str, help='device to use', default='cuda')
+    parser.add_argument('--load_dir', type=str, help='directory containing bitstreams.npz and weights.pth', default=None)
+    parser.add_argument('--save_dir', type=str, help='directory to save rendered images and results', default=None)
 
     args, override_cfgs = parser.parse_known_args()
     override_cfgs = dict(arg.lstrip('-').split('=') for arg in override_cfgs) if len(override_cfgs) > 0 else {}
@@ -61,7 +63,9 @@ if __name__ == "__main__":
         'experiment_root': args.experiment_root, 
         'dataset': dataset,
         'gpcc_codec_path': configs['training']['gpcc_codec_path'],
-        'eval_lpips': configs['training']['eval_lpips']
+        'eval_lpips': configs['training']['eval_lpips'],
+        'load_dir': args.load_dir,
+        'save_dir': args.save_dir
     }
     
     # Add gaussian model parameters to tester_args

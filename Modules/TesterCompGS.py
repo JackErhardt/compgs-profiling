@@ -16,7 +16,7 @@ from Modules.TrainerCompGS import TrainerCompGS
 
 
 class TesterCompGS:
-    def __init__(self, trainer: TrainerCompGS = None, experiment_root: str = None, device: str = None, dataset: BaseDataset = None, **kwargs) -> None:
+    def __init__(self, trainer: TrainerCompGS = None, experiment_root: str = None, device: str = None, dataset: BaseDataset = None, load_dir: str = None, save_dir: str = None, **kwargs) -> None:
         if trainer is not None:  # inherit configurations from trainer
             self.device = trainer.device
             self.experiment_root = trainer.experiment_dir
@@ -24,6 +24,8 @@ class TesterCompGS:
             self.gaussian_model = trainer.gaussian_model
             self.gpcc_codec_path = trainer.gpcc_codec_path
             self.eval_lpips = kwargs['eval_lpips']
+            self.load_dir = os.path.join(self.experiment_root, 'point_cloud')
+            self.save_dir = os.path.join(self.experiment_root, 'eval')
         else:  # use custom configurations
             self.device = device
             self.experiment_root = experiment_root
@@ -31,6 +33,8 @@ class TesterCompGS:
             self.gaussian_model = self.init_gaussian_model(kwargs)
             self.gpcc_codec_path = kwargs['gpcc_codec_path']
             self.eval_lpips = kwargs['eval_lpips']
+            self.load_dir = load_dir if load_dir is not None else os.path.join(self.experiment_root, 'point_cloud')
+            self.save_dir = save_dir if save_dir is not None else os.path.join(self.experiment_root, 'eval')
 
         # load Gaussian model
         decompression_time = self.load_gaussian_model()  # minutes
@@ -40,7 +44,7 @@ class TesterCompGS:
             self.lpips_model = lpips.LPIPS(net='vgg', version='0.1', verbose=False).eval().to(self.device)
 
         # create folder to store original and rendered images
-        self.eval_results_folder = os.path.join(self.experiment_root, 'eval')
+        self.eval_results_folder = self.save_dir
         os.makedirs(self.eval_results_folder, exist_ok=True)
         # self.original_img_folder = os.path.join(self.eval_results_folder, 'original')
         # os.makedirs(self.original_img_folder, exist_ok=True)
@@ -117,11 +121,11 @@ class TesterCompGS:
         Load Gaussian model.
         """
         # first load weights of network
-        weights_path = os.path.join(self.experiment_root, 'point_cloud', 'weights.pth')
+        weights_path = os.path.join(self.load_dir, 'weights.pth')
         self.gaussian_model.load_weights(weight_path=weights_path)
 
         # then load bitstreams
-        npz_path = os.path.join(self.experiment_root, 'point_cloud', 'bitstreams.npz')
+        npz_path = os.path.join(self.load_dir, 'bitstreams.npz')
         torch.cuda.synchronize()
         start_time = time.perf_counter()
         self.gaussian_model.load_compressed_params(npz_path=npz_path, gpcc_codec_path=self.gpcc_codec_path)
