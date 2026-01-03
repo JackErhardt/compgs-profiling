@@ -260,11 +260,17 @@ class TrainerCompGS:
         pred_img = render_results.rendered_img
         
         if sample.alpha_mask is not None:
+            # Masked L1 loss: ignore transparent pixels
+            l1_loss = (torch.abs(pred_img - gt_img) * sample.alpha_mask).sum() / (sample.alpha_mask.sum() * 3.0 + 1e-6)
+            
+            # Blended SSIM: blend with white background to handle transparency
             gt_img = gt_img * sample.alpha_mask + (1 - sample.alpha_mask)
             pred_img = pred_img * sample.alpha_mask + (1 - sample.alpha_mask)
+            ssim_loss = 1 - ssim(pred_img.unsqueeze(dim=0), gt_img.unsqueeze(dim=0), data_range=1., size_average=True)
+        else:
+            l1_loss = F.l1_loss(pred_img, gt_img)
+            ssim_loss = 1 - ssim(pred_img.unsqueeze(dim=0), gt_img.unsqueeze(dim=0), data_range=1., size_average=True)
 
-        l1_loss = F.l1_loss(pred_img, gt_img)
-        ssim_loss = 1 - ssim(pred_img.unsqueeze(dim=0), gt_img.unsqueeze(dim=0), data_range=1., size_average=True)
         rendering_loss = (1 - ssim_weight) * l1_loss + ssim_weight * ssim_loss
 
         # calculate regularization loss
