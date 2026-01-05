@@ -30,6 +30,37 @@ namespace cg = cooperative_groups;
 #include "forward.h"
 #include "backward.h"
 
+// Global variables to store the last culling stage counts
+static unsigned int g_last_num_evaluated = 0;
+static unsigned int g_last_num_opaque = 0;  
+static unsigned int g_last_num_shaded = 0;
+
+// Functions to store the culling stage counts
+void storeLastNumEvaluated(int count) {
+	g_last_num_evaluated = count;
+}
+
+void storeLastNumOpaque(int count) {
+	g_last_num_opaque = count;
+}
+
+void storeLastNumShaded(int count) {
+	g_last_num_shaded = count;
+}
+
+// Functions to retrieve the culling stage counts
+int getLastNumEvaluated() {
+	return g_last_num_evaluated;
+}
+
+int getLastNumOpaque() {
+	return g_last_num_opaque;
+}
+
+int getLastNumShaded() {
+	return g_last_num_shaded;
+}
+
 // Helper function to find the next-highest bit of the MSB
 // on the CPU.
 uint32_t getHigherMsb(uint32_t n)
@@ -319,6 +350,20 @@ int CudaRasterizer::Rasterizer::forward(
 
 	// Let each tile blend its range of Gaussians independently in parallel
 	const float* feature_ptr = colors_precomp != nullptr ? colors_precomp : geomState.rgb;
+	
+	// Allocate counters to track culling stages
+	unsigned int* num_evaluated;
+	CHECK_CUDA(cudaMalloc(&num_evaluated, sizeof(int)), debug);
+	CHECK_CUDA(cudaMemset(num_evaluated, 0, sizeof(int)), debug);
+	
+	unsigned int* num_opaque;
+	CHECK_CUDA(cudaMalloc(&num_opaque, sizeof(int)), debug);
+	CHECK_CUDA(cudaMemset(num_opaque, 0, sizeof(int)), debug);
+	
+	unsigned int* num_shaded;
+	CHECK_CUDA(cudaMalloc(&num_shaded, sizeof(int)), debug);
+	CHECK_CUDA(cudaMemset(num_shaded, 0, sizeof(int)), debug);
+
 	CHECK_CUDA(FORWARD::render(
 		tile_grid, block,
 		imgState.ranges,
@@ -330,8 +375,28 @@ int CudaRasterizer::Rasterizer::forward(
 		imgState.accum_alpha,
 		imgState.n_contrib,
 		background,
-		out_color
-		), debug)
+		out_color,
+		num_evaluated,
+		num_opaque,
+		num_shaded), debug)
+
+	// Get the culling stage counts from GPU
+	unsigned int host_num_evaluated = 0;
+	CHECK_CUDA(cudaMemcpy(&host_num_evaluated, num_evaluated, sizeof(unsigned int), cudaMemcpyDeviceToHost), debug);
+	CHECK_CUDA(cudaFree(num_evaluated), debug);
+	
+	unsigned int host_num_opaque = 0;
+	CHECK_CUDA(cudaMemcpy(&host_num_opaque, num_opaque, sizeof(unsigned int), cudaMemcpyDeviceToHost), debug);
+	CHECK_CUDA(cudaFree(num_opaque), debug);
+	
+	unsigned int host_num_shaded = 0;
+	CHECK_CUDA(cudaMemcpy(&host_num_shaded, num_shaded, sizeof(unsigned int), cudaMemcpyDeviceToHost), debug);
+	CHECK_CUDA(cudaFree(num_shaded), debug);
+	
+	// Store the culling stage counts for later retrieval by the Python interface
+	storeLastNumEvaluated(host_num_evaluated);
+	storeLastNumOpaque(host_num_opaque);
+	storeLastNumShaded(host_num_shaded);
 
 	return num_rendered;
 }

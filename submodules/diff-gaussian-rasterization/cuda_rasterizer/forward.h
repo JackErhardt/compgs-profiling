@@ -59,7 +59,10 @@ namespace FORWARD
 		float* final_T,
 		uint32_t* n_contrib,
 		const float* bg_color,
-		float* out_color);
+		float* out_color,
+		unsigned int* num_evaluated = nullptr,
+		unsigned int* num_opaque = nullptr,
+		unsigned int* num_shaded = nullptr);
 	void filter_preprocess(int P, int M,
 		const float* means3D,
 		const glm::vec3* scales,

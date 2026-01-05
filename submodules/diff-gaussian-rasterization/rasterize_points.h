@@ -14,6 +14,10 @@
 #include <cstdio>
 #include <tuple>
 #include <string>
+
+int getNumEvaluated();
+int getNumOpaque();
+int getNumShaded();
 	
 std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(

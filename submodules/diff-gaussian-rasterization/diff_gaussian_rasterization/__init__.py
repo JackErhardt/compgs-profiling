@@ -14,6 +14,32 @@ import torch.nn as nn
 import torch
 from . import _C
 
+# Global variables to store the culling stage counts
+_last_num_evaluated = 0
+_last_num_opaque = 0
+_last_num_shaded = 0
+
+def get_last_num_evaluated():
+    """
+    Retrieve the number of Gaussian-pixel intersections that passed power culling.
+    """
+    global _last_num_evaluated
+    return _last_num_evaluated
+
+def get_last_num_opaque():
+    """
+    Retrieve the number of Gaussian-pixel intersections that passed opacity culling.
+    """
+    global _last_num_opaque
+    return _last_num_opaque
+
+def get_last_num_shaded():
+    """
+    Retrieve the number of Gaussian-pixel intersections that contributed to final shading.
+    """
+    global _last_num_shaded
+    return _last_num_shaded
+
 def cpu_deep_copy_tuple(input_tuple):
     copied_tensors = [item.cpu().clone() if isinstance(item, torch.Tensor) else item for item in input_tuple]
     return tuple(copied_tensors)
@@ -92,6 +118,12 @@ class _RasterizeGaussians(torch.autograd.Function):
             num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
             # num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
             # num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer, depth = _C.rasterize_gaussians(*args)
+
+        # Retrieve the culling stage counts
+        global _last_num_evaluated, _last_num_opaque, _last_num_shaded
+        _last_num_evaluated = _C.get_num_evaluated()
+        _last_num_opaque = _C.get_num_opaque()
+        _last_num_shaded = _C.get_num_shaded()
 
         # Keep relevant tensors for backward
         ctx.raster_settings = raster_settings

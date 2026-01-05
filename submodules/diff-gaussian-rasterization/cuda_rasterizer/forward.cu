@@ -356,7 +356,10 @@ renderCUDA(
 	float* __restrict__ final_T,
 	uint32_t* __restrict__ n_contrib,
 	const float* __restrict__ bg_color,
-	float* __restrict__ out_color)
+	float* __restrict__ out_color,
+	unsigned int* __restrict__ num_evaluated = nullptr,
+	unsigned int* __restrict__ num_opaque = nullptr,
+	unsigned int* __restrict__ num_shaded = nullptr)
 {
 	// Identify current tile and associated min/max pixel range.
 	auto block = cg::this_thread_block();
@@ -419,6 +422,13 @@ renderCUDA(
 			float2 d = { xy.x - pixf.x, xy.y - pixf.y };
 			float4 con_o = collected_conic_opacity[j];
 			float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+
+			// Count Gaussian-pixel intersections that reach power culling
+			if (num_evaluated != nullptr && inside)
+			{
+				atomicAdd((int*)num_evaluated, 1);
+			}
+
 			if (power > 0.0f)
 				continue;
 
@@ -428,8 +438,22 @@ renderCUDA(
 			// Avoid numerical instabilities (see paper appendix). 
 			// float det = 
 			float alpha = min(0.99f, con_o.w * exp(power));
+			
+			// Count Gaussian-pixel intersections that reach opacity culling
+			if (num_opaque != nullptr && inside)
+			{
+				atomicAdd((int*)num_opaque, 1);
+			}
+
 			if (alpha < 1.0f / 255.0f)
 				continue;
+
+			// Count Gaussian-pixel intersections that contribute to final shading (replaces gaussian_pixel_contributed)
+			if (num_shaded != nullptr && inside)
+			{
+				atomicAdd((int*)num_shaded, 1);
+			}
+
 			float test_T = T * (1 - alpha);
 			if (test_T < 0.0001f)
 			{
@@ -472,7 +496,10 @@ void FORWARD::render(
 	float* final_T,
 	uint32_t* n_contrib,
 	const float* bg_color,
-	float* out_color)
+	float* out_color,
+	unsigned int* num_evaluated,
+	unsigned int* num_opaque,
+	unsigned int* num_shaded)
 {
 	renderCUDA<NUM_CHANNELS> << <grid, block >> > (
 		ranges,
@@ -484,7 +511,10 @@ void FORWARD::render(
 		final_T,
 		n_contrib,
 		bg_color,
-		out_color);
+		out_color,
+		num_evaluated,
+		num_opaque,
+		num_shaded);
 }
 
 void FORWARD::preprocess(int P, int D, int M,

@@ -24,6 +24,14 @@
 #include <string>
 #include <functional>
 
+// Forward declaration for the contributing count functions
+extern unsigned int getLastNumEvaluated();
+extern void storeLastNumEvaluated(unsigned int count);
+extern unsigned int getLastNumOpaque();
+extern void storeLastNumOpaque(unsigned int count);
+extern unsigned int getLastNumShaded();
+extern void storeLastNumShaded(unsigned int count);
+
 std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
     auto lambda = [&t](size_t N) {
         t.resize_({(long long)N});
@@ -281,4 +289,19 @@ RasterizeGaussiansfilterCUDA(
 		debug);
   }
   return radii;
+}
+
+int getNumEvaluated()
+{
+  return getLastNumEvaluated();
+}
+
+int getNumOpaque()
+{
+  return getLastNumOpaque();
+}
+
+int getNumShaded()
+{
+  return getLastNumShaded();
 }
