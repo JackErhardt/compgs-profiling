@@ -4,7 +4,7 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
-from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
+from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer, get_last_num_rendered, get_last_num_evaluated, get_last_num_opaque, get_last_num_shaded
 
 from .Modules import Networks
 from .Modules import Parameters
@@ -214,7 +214,11 @@ class GaussianModel(nn.Module):
             scales=gaussian_primitives.scales,
             anchor_primitive_visible_mask=anchor_primitive_visible_mask,
             coupled_primitive_mask=coupled_primitive_mask,
-            bpp=bpp
+            bpp=bpp,
+            num_rendered=get_last_num_rendered(),
+            num_evaluated=get_last_num_evaluated(),
+            num_opaque=get_last_num_opaque(),
+            num_shaded=get_last_num_shaded()
         )
 
         return render_results

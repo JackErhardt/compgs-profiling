@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import csv
 from functools import partial
 
 import numpy as np
@@ -76,6 +77,28 @@ class TrainerCompGS:
         )
 
         self.gpcc_codec_path = self.configs['training']['gpcc_codec_path']
+        
+        # Create a CSV file to log runtime statistics in the tensorboard logger directory
+        csv_file = os.path.join(self.experiment_dir, "runtime_stats.csv")
+        self.csv_file_handle = open(csv_file, 'w', newline='')
+        # Create a dictionary writer object
+        self.csv_writer = csv.DictWriter(
+            self.csv_file_handle, 
+            fieldnames=[
+                "iteration",
+                "RenderHeight",
+                "RenderWidth",
+                "NAnchors",
+                "NAnchorsVisible",
+                "NGaussiansVisible",
+                "NTileIntersections",
+                "NPixelIntersectionsCull1",
+                "NPixelIntersectionsCull2",
+                "NPixelIntersectionsCull3",
+                "PSNR",
+            ]
+        )
+        self.csv_writer.writeheader()
         # print("TrainerCompGS initialized.")
 
     def print_gpu_memory(self, tag=""):
@@ -124,6 +147,41 @@ class TrainerCompGS:
             # record
             self.record(iteration=iteration, backward_results=backward_results, render_results=render_results, sample=sample)
 
+            # Log runtime statistics
+            with torch.no_grad():
+                num_anchors = self.gaussian_model.num_anchor_primitive
+                num_anchors_visible = render_results.anchor_primitive_visible_mask.sum().item()
+                num_gaussians_visible = render_results.visibility_mask.sum().item()
+                num_rendered = render_results.num_rendered
+                num_evaluated = render_results.num_evaluated
+                num_opaque = render_results.num_opaque
+                num_shaded = render_results.num_shaded
+                
+                # # Calculate PSNR for logging
+                # gt_img = sample.img
+                # pred_img = render_results.rendered_img
+                # if sample.alpha_mask is not None:
+                #     gt_img = gt_img * sample.alpha_mask + (1 - sample.alpha_mask)
+                #     pred_img = pred_img * sample.alpha_mask + (1 - sample.alpha_mask)
+                
+                # mse = F.mse_loss(pred_img, gt_img)
+                # psnr_value = 10 * torch.log10(1 / mse)
+
+                self.csv_writer.writerow({
+                    "iteration": iteration,
+                    "RenderHeight": sample.image_height,
+                    "RenderWidth": sample.image_width,
+                    "NAnchors": num_anchors,
+                    "NAnchorsVisible": num_anchors_visible,
+                    "NGaussiansVisible": num_gaussians_visible,
+                    "NTileIntersections": num_rendered,
+                    "NPixelIntersectionsCull1": num_evaluated,
+                    "NPixelIntersectionsCull2": num_opaque,
+                    "NPixelIntersectionsCull3": num_shaded,
+                    "PSNR": -1,
+                })
+                self.csv_file_handle.flush()
+
             # optimize Gaussian parameters
             self.optimize(iteration=iteration, render_results=render_results)
             # if iteration % 10 == 0: print(f"Iteration {iteration}: Optimize done")
@@ -137,6 +195,9 @@ class TrainerCompGS:
         torch.cuda.synchronize()
         end_time = time.perf_counter()
         training_time = (end_time - start_time) / 60  # minutes
+        
+        # Close the CSV file
+        self.csv_file_handle.close()
 
         # evaluate the model
         # self.eval()

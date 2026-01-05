@@ -84,3 +84,7 @@ class RenderResults:
     coupled_primitive_mask: torch.Tensor  # mask of coupled primitives, shape (M, 1)
     scales: torch.Tensor  # scales of predicted Gaussian primitives, shape (M, 3)
     bpp: dict  # bits per pixel for each parameter to be compressed
+    num_rendered: int = 0
+    num_evaluated: int = 0
+    num_opaque: int = 0
+    num_shaded: int = 0
