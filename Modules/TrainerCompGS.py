@@ -347,7 +347,7 @@ class TrainerCompGS:
         loss = rendering_loss + reg_loss + (rate_loss if iteration > self.configs['training']['rate_loss_start_iteration'] else 0.)
 
         # backward
-        self.print_gpu_memory("Pre-Backward")
+        # self.print_gpu_memory("Pre-Backward")
         loss.backward()
 
         # calculate auxiliary loss

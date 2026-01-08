@@ -14,10 +14,19 @@ import torch.nn as nn
 import torch
 from . import _C
 
+# Global variable to store the last num_rendered value
+_last_num_rendered = 0
 # Global variables to store the culling stage counts
 _last_num_evaluated = 0
 _last_num_opaque = 0
 _last_num_shaded = 0
+
+def get_last_num_rendered():
+    """
+    Retrieve the number of Gaussians rendered in the last rasterization call.
+    """
+    global _last_num_rendered
+    return _last_num_rendered
 
 def get_last_num_evaluated():
     """
@@ -120,7 +129,8 @@ class _RasterizeGaussians(torch.autograd.Function):
             # num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer, depth = _C.rasterize_gaussians(*args)
 
         # Retrieve the culling stage counts
-        global _last_num_evaluated, _last_num_opaque, _last_num_shaded
+        global _last_num_rendered, _last_num_evaluated, _last_num_opaque, _last_num_shaded
+        _last_num_rendered = num_rendered
         _last_num_evaluated = _C.get_num_evaluated()
         _last_num_opaque = _C.get_num_opaque()
         _last_num_shaded = _C.get_num_shaded()
