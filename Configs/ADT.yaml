@@ -4,6 +4,8 @@ dataset:
   vrs_path: video.vrs  # Path to the VRS file
   closedloop_path: mps/slam/closed_loop_trajectory.csv  # Path to the closed loop trajectory CSV file
   image_folder: images  # name of the image folder
+  img_height: -1 # Override for image height, -1 to use default
+  img_width: -1 # Override for image width, -1 to use default
   percent_dense_points: 10 # Percent of points in the dataset point cloud to initialize the gaussian splat with
   eval_interval: -1 # Evaluate all training views
 
@@ -26,6 +28,8 @@ training:
   eval_lpips: false # Evaluate LPIPS score
 
   gpcc_codec_path: /nfs/turbo/coe-vlsisp/erharj/gaussian_splatting/libraries/mpeg-pcc-tmc13/build/tmc3/tmc3  # Path to the GPCC codec
+  prediction_net_path: "" # Path to a weights.pth file to initialize the prediction network
+
 
   lr:  # Learning rate
     gaussian:  # Gaussian parameters

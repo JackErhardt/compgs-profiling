@@ -101,6 +101,13 @@ class Networks(CompressionModel):
             res_feats_strings=res_feats_strings, res_hyper_strings=res_hyper_strings,
             scale_strings=scale_strings, num_anchor_primitives=num_anchor_primitives)
 
+    def freeze_prediction_net(self) -> None:
+        """
+        Freeze the prediction network by setting requires_grad to False for all its parameters.
+        """
+        for param in self.prediction_net.parameters():
+            param.requires_grad = False
+
     @torch.no_grad()
     def pred_gaussian_means(self, means: torch.Tensor, scaling_factors_before_exp: torch.Tensor,
                             ref_feats: torch.Tensor, res_feats: torch.Tensor) -> torch.Tensor:

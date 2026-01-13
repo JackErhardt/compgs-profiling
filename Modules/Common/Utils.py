@@ -187,7 +187,7 @@ def init(config_path: str, override_cfgs: dict) -> tuple[dict, CustomLogger, Pat
 
     experiment_dir = Path(configs['training']['save_directory'])
     experiment_dir.mkdir(exist_ok=True)
-    experiment_dir = Path(str(experiment_dir) + '/' + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")))
+    experiment_dir = Path(str(experiment_dir) + '/' + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")))
     experiment_dir.mkdir(exist_ok=True)
 
     enable_detail_log = not configs['training']['disable_logging'] if 'disable_logging' in configs['training'] else True

@@ -47,7 +47,9 @@ if __name__ == "__main__":
             image_folder=dataset_configs['image_folder'],
             logger=dummy_logger,
             device=args.device,
-            eval_interval=dataset_configs['eval_interval']
+            eval_interval=dataset_configs['eval_interval'],
+            img_height=dataset_configs.get('img_height', -1),
+            img_width=dataset_configs.get('img_width', -1)
         )
     else:
         dataset = BaseDataset(

@@ -40,7 +40,9 @@ class TrainerCompGS:
                 image_folder=self.configs['dataset']['image_folder'],
                 logger=self.logger,
                 device=self.device,
-                eval_interval=self.configs['dataset']['eval_interval']
+                eval_interval=self.configs['dataset']['eval_interval'],
+                img_height=self.configs['dataset'].get('img_height', -1),
+                img_width=self.configs['dataset'].get('img_width', -1)
             )
         else:
             self.dataset = BaseDataset(
@@ -62,6 +64,11 @@ class TrainerCompGS:
         # init gaussian model with sparse point clouds
         percent_dense_points = self.configs['dataset']['percent_dense_points']
         self.gaussian_model.init_from_dataset(self.dataset, percent_dense_points=percent_dense_points)
+
+        # Load and possibly freeze prediction network
+        if self.configs['training'].get('prediction_net_path'):
+            self.gaussian_model.load_weights(self.configs['training']['prediction_net_path'])
+            self.gaussian_model.freeze_prediction_net()
 
         # init optimizer
         self.gaussian_optimizer, self.aux_optimizer = self.init_optimizers()

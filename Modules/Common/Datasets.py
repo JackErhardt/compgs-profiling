@@ -326,10 +326,16 @@ class AriaDataset(BaseDataset):
     Camera = namedtuple("Camera", ["id", "model", "width", "height", "params"])
     Image = namedtuple("Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"])
 
-    def __init__(self, root: str, vrs_path: str, closedloop_path: str, image_folder: str, logger: CustomLogger, device: str, eval_interval: int = 8, z_near: float = 0.01, z_far: float = 100):
+    def __init__(self, root: str, vrs_path: str, closedloop_path: str, image_folder: str, logger: CustomLogger, device: str, 
+                 eval_interval: int = 8, z_near: float = 0.01, z_far: float = 100,
+                 img_height: int = -1, img_width: int = -1):
         self.vrs_path = os.path.join(root, vrs_path)
         self.closedloop_path = os.path.join(root, closedloop_path)
         self.image_folder = os.path.join(root, image_folder)
+        
+        self.img_height_override = img_height
+        self.img_width_override = img_width
+
         # Call BaseDataset constructor with dummy paths (we override load_samples)
         super().__init__(root="", image_folder="", logger=logger, device=device, eval_interval=eval_interval, z_near=z_near, z_far=z_far)
 
@@ -425,12 +431,19 @@ class AriaDataset(BaseDataset):
             rgb_focal_length = rgb_calib.get_focal_lengths()[0]
             rgb_principal_point = rgb_calib.get_principal_point()
 
+            if self.img_height_override > 0 and self.img_width_override > 0:
+                width = int(self.img_width_override)
+                height = int(self.img_height_override)
+            else:
+                width = int(rgb_calib.get_image_size()[0])
+                height = int(rgb_calib.get_image_size()[1])
+
             cameras = {
                 0: self.Camera(
                     id=0,
                     model="SIMPLE_PINHOLE",
-                    width=int(rgb_calib.get_image_size()[0]),
-                    height=int(rgb_calib.get_image_size()[1]),
+                    width=width,
+                    height=height,
                     params=np.array([rgb_focal_length, *rgb_principal_point])
                 )
             }

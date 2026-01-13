@@ -473,6 +473,13 @@ class GaussianModel(nn.Module):
         self.network.load_state_dict(state_dicts)
         self.logger.info(f'Loading network weights from {weight_path}...')
 
+    def freeze_prediction_net(self):
+        """
+        Freeze the prediction network weights.
+        """
+        self.network.freeze_prediction_net()
+        self.logger.info('Freezing prediction network weights...')
+
     def replace_params(self, param_name: str, param_value: nn.Parameter) -> None:
         """
         Replace Gaussian model parameters.
