@@ -67,7 +67,8 @@ if __name__ == "__main__":
         'gpcc_codec_path': configs['training']['gpcc_codec_path'],
         'eval_lpips': configs['training']['eval_lpips'],
         'load_dir': args.load_dir,
-        'save_dir': args.save_dir
+        'save_dir': args.save_dir,
+        'skipped_tiles_path': configs['training'].get('skipped_tiles_path', None)
     }
     
     # Add gaussian model parameters to tester_args

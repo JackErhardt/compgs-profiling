@@ -25,7 +25,22 @@ class TrainerCompGS:
         # print("Initializing TrainerCompGS...")
         self.configs, self.logger, self.experiment_dir = init(config_path=config_path, override_cfgs=override_cfgs)
         self.logger.info(f'\nTrainer: {type(self).__name__}\n')
-
+        
+        # load skipped tiles
+        self.skipped_tiles = None
+        if ('skipped_tiles_path' in self.configs['training']) and (self.configs['training']['skipped_tiles_path'] is not None):
+             skipped_tiles_path = str(self.configs['training']['skipped_tiles_path'])
+             if skipped_tiles_path != 'None' and os.path.exists(skipped_tiles_path):
+                 with open(skipped_tiles_path, 'r') as f:
+                     lines = f.readlines()
+                     coords = []
+                     for line in lines:
+                         parts = line.strip().split()
+                         if len(parts) >= 2:
+                             coords.append([int(parts[0]), int(parts[1])])
+                     if len(coords) > 0:
+                         self.skipped_tiles = torch.tensor(coords, device='cuda' if self.configs['training']['gpu'] else 'cpu', dtype=torch.int32)
+        
         self.checkpoints_dir = self.experiment_dir.joinpath("point_cloud/")
         self.checkpoints_dir.mkdir(exist_ok=True)
 
@@ -102,6 +117,7 @@ class TrainerCompGS:
                 "NPixelIntersectionsCull1",
                 "NPixelIntersectionsCull2",
                 "NPixelIntersectionsCull3",
+                "NSkippedTiles",
                 "PSNR",
             ]
         )
@@ -137,7 +153,8 @@ class TrainerCompGS:
             render_settings = RenderSettings(
                 cam_idx=sample.cam_idx, image_height=sample.image_height, image_width=sample.image_width,
                 tanfovx=sample.tan_half_fov_x, tanfovy=sample.tan_half_fov_y, campos=sample.camera_center,
-                viewmatrix=sample.world_to_view_proj_mat, projmatrix=sample.world_to_image_proj_mat)
+                viewmatrix=sample.world_to_view_proj_mat, projmatrix=sample.world_to_image_proj_mat,
+                skipped_tiles=self.skipped_tiles)
 
             retain_grad = iteration < self.configs['adaptive_control']['stop_iteration']
             # if iteration % 10 == 0: 
@@ -163,7 +180,8 @@ class TrainerCompGS:
                 num_evaluated = render_results.num_evaluated
                 num_opaque = render_results.num_opaque
                 num_shaded = render_results.num_shaded
-                
+                num_skipped_tiles = self.skipped_tiles.shape[0] if self.skipped_tiles is not None else 0
+
                 # # Calculate PSNR for logging
                 # gt_img = sample.img
                 # pred_img = render_results.rendered_img
@@ -185,6 +203,7 @@ class TrainerCompGS:
                     "NPixelIntersectionsCull1": num_evaluated,
                     "NPixelIntersectionsCull2": num_opaque,
                     "NPixelIntersectionsCull3": num_shaded,
+                    "NSkippedTiles": num_skipped_tiles,
                     "PSNR": -1,
                 })
                 self.csv_file_handle.flush()

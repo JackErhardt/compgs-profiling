@@ -91,6 +91,23 @@ class _RasterizeGaussians(torch.autograd.Function):
         raster_settings,
     ):
 
+        if raster_settings.skipped_tiles is not None and raster_settings.skipped_tiles.numel() > 0:
+            H = raster_settings.image_height
+            W = raster_settings.image_width
+            BLOCK_X, BLOCK_Y = 16, 16
+            grid_x = (W + BLOCK_X - 1) // BLOCK_X
+            grid_y = (H + BLOCK_Y - 1) // BLOCK_Y
+            
+            tile_mask = torch.zeros((grid_y * grid_x), device=means3D.device, dtype=torch.bool)
+            tiles = raster_settings.skipped_tiles
+            indices = tiles[:, 1] * grid_x + tiles[:, 0]
+            # Clip indices to ensure safety?
+            indices = indices[indices < (grid_y * grid_x)]
+            tile_mask[indices.long()] = True
+            skipped_tiles = tile_mask
+        else:
+            skipped_tiles = torch.empty(0, device=means3D.device, dtype=torch.bool)
+
         # Restructure arguments the way that the C++ lib expects them
         args = (
             raster_settings.bg, 
@@ -111,7 +128,8 @@ class _RasterizeGaussians(torch.autograd.Function):
             raster_settings.sh_degree,
             raster_settings.campos,
             raster_settings.prefiltered,
-            raster_settings.debug
+            raster_settings.debug,
+            skipped_tiles
         )
 
         # Invoke C++/CUDA rasterizer
@@ -150,6 +168,22 @@ class _RasterizeGaussians(torch.autograd.Function):
         raster_settings = ctx.raster_settings
         colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer = ctx.saved_tensors
 
+        if raster_settings.skipped_tiles is not None and raster_settings.skipped_tiles.numel() > 0:
+            H = raster_settings.image_height
+            W = raster_settings.image_width
+            BLOCK_X, BLOCK_Y = 16, 16
+            grid_x = (W + BLOCK_X - 1) // BLOCK_X
+            grid_y = (H + BLOCK_Y - 1) // BLOCK_Y
+            
+            tile_mask = torch.zeros((grid_y * grid_x), device=means3D.device, dtype=torch.bool)
+            tiles = raster_settings.skipped_tiles
+            indices = tiles[:, 1] * grid_x + tiles[:, 0]
+            indices = indices[indices < (grid_y * grid_x)]
+            tile_mask[indices.long()] = True
+            skipped_tiles = tile_mask
+        else:
+            skipped_tiles = torch.empty(0, device=means3D.device, dtype=torch.bool)
+
         # Restructure args as C++ method expects them
         args = (raster_settings.bg,
                 means3D, 
@@ -171,7 +205,8 @@ class _RasterizeGaussians(torch.autograd.Function):
                 num_rendered,
                 binningBuffer,
                 imgBuffer,
-                raster_settings.debug)
+                raster_settings.debug,
+                skipped_tiles)
 
         # Compute gradients for relevant tensors by invoking backward method
         if raster_settings.debug:
@@ -212,6 +247,7 @@ class GaussianRasterizationSettings(NamedTuple):
     campos : torch.Tensor
     prefiltered : bool
     debug : bool
+    skipped_tiles : torch.Tensor
 
 class GaussianRasterizer(nn.Module):
     def __init__(self, raster_settings):

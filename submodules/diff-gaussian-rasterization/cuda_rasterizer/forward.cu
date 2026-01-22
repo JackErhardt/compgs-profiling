@@ -359,11 +359,20 @@ renderCUDA(
 	float* __restrict__ out_color,
 	unsigned int* __restrict__ num_evaluated = nullptr,
 	unsigned int* __restrict__ num_opaque = nullptr,
-	unsigned int* __restrict__ num_shaded = nullptr)
+	unsigned int* __restrict__ num_shaded = nullptr,
+    const bool* __restrict__ tile_mask = nullptr)
 {
 	// Identify current tile and associated min/max pixel range.
 	auto block = cg::this_thread_block();
 	uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X;
+
+    if (tile_mask != nullptr)
+    {
+        uint32_t tile_idx = block.group_index().y * horizontal_blocks + block.group_index().x;
+        if (tile_mask[tile_idx])
+            return;
+    }
+
 	uint2 pix_min = { block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y };
 	uint2 pix_max = { min(pix_min.x + BLOCK_X, W), min(pix_min.y + BLOCK_Y , H) };
 	uint2 pix = { pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y };
@@ -499,7 +508,8 @@ void FORWARD::render(
 	float* out_color,
 	unsigned int* num_evaluated,
 	unsigned int* num_opaque,
-	unsigned int* num_shaded)
+	unsigned int* num_shaded,
+    const bool* tile_mask)
 {
 	renderCUDA<NUM_CHANNELS> << <grid, block >> > (
 		ranges,
@@ -514,7 +524,8 @@ void FORWARD::render(
 		out_color,
 		num_evaluated,
 		num_opaque,
-		num_shaded);
+		num_shaded,
+        tile_mask);
 }
 
 void FORWARD::preprocess(int P, int D, int M,

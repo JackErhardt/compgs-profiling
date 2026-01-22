@@ -29,7 +29,7 @@ training:
 
   gpcc_codec_path: /nfs/turbo/coe-vlsisp/erharj/gaussian_splatting/libraries/mpeg-pcc-tmc13/build/tmc3/tmc3  # Path to the GPCC codec
   prediction_net_path: "" # Path to a weights.pth file to initialize the prediction network
-
+  skipped_tiles_path: None # Path 
 
   lr:  # Learning rate
     gaussian:  # Gaussian parameters

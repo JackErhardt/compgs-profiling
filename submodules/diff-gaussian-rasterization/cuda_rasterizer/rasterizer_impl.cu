@@ -248,7 +248,8 @@ int CudaRasterizer::Rasterizer::forward(
 	const bool prefiltered,
 	float* out_color,
 	int* radii,
-	bool debug)
+	bool debug,
+    const bool* tile_mask)
 {
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
@@ -378,7 +379,8 @@ int CudaRasterizer::Rasterizer::forward(
 		out_color,
 		num_evaluated,
 		num_opaque,
-		num_shaded), debug)
+		num_shaded,
+        tile_mask), debug)
 
 	// Get the culling stage counts from GPU
 	unsigned int host_num_evaluated = 0;
@@ -492,7 +494,8 @@ void CudaRasterizer::Rasterizer::backward(
 	float* dL_dsh,
 	float* dL_dscale,
 	float* dL_drot,
-	bool debug)
+	bool debug,
+    const bool* tile_mask)
 {
 	GeometryState geomState = GeometryState::fromChunk(geom_buffer, P);
 	BinningState binningState = BinningState::fromChunk(binning_buffer, R);
@@ -529,7 +532,8 @@ void CudaRasterizer::Rasterizer::backward(
 		(float3*)dL_dmean2D,
 		(float4*)dL_dconic,
 		dL_dopacity,
-		dL_dcolor), debug)
+		dL_dcolor,
+        tile_mask), debug)
 
 	// Take care of the rest of preprocessing. Was the precomputed covariance
 	// given to us or a scales/rot pair? If precomputed, pass that. If not,

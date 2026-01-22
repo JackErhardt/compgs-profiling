@@ -50,7 +50,8 @@ namespace CudaRasterizer
 			const bool prefiltered,
 			float* out_color,
 			int* radii = nullptr,
-			bool debug = false);
+			bool debug = false,
+            const bool* tile_mask = nullptr);
 
 
 		static void visible_filter(
@@ -102,7 +103,8 @@ namespace CudaRasterizer
 			float* dL_dsh,
 			float* dL_dscale,
 			float* dL_drot,
-			bool debug);
+			bool debug,
+            const bool* tile_mask = nullptr);
 	};
 };
 

@@ -62,7 +62,8 @@ namespace FORWARD
 		float* out_color,
 		unsigned int* num_evaluated = nullptr,
 		unsigned int* num_opaque = nullptr,
-		unsigned int* num_shaded = nullptr);
+		unsigned int* num_shaded = nullptr,
+        const bool* tile_mask = nullptr);
 	void filter_preprocess(int P, int M,
 		const float* means3D,
 		const glm::vec3* scales,

@@ -24,6 +24,7 @@ class RenderSettings:
     projmatrix: torch.Tensor  # projection matrix from world space to image plane, shape (4, 4)
     cam_idx: int  # camera id
     campos: torch.Tensor  # locations of camera center in world space, shape (3,)
+    skipped_tiles: Optional[torch.Tensor] = None  # coordinates of skipped tiles, shape (N, 2)
 
 
 @dataclass

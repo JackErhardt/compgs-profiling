@@ -26,6 +26,7 @@ class TesterCompGS:
             self.eval_lpips = kwargs['eval_lpips']
             self.load_dir = os.path.join(self.experiment_root, 'point_cloud')
             self.save_dir = os.path.join(self.experiment_root, 'eval')
+            self.skipped_tiles = getattr(trainer, 'skipped_tiles', None)
         else:  # use custom configurations
             self.device = device
             self.experiment_root = experiment_root
@@ -35,6 +36,22 @@ class TesterCompGS:
             self.eval_lpips = kwargs['eval_lpips']
             self.load_dir = load_dir if load_dir is not None else os.path.join(self.experiment_root, 'point_cloud')
             self.save_dir = save_dir if save_dir is not None else os.path.join(self.experiment_root, 'eval')
+
+        # load skipped tiles
+        self.skipped_tiles = None
+        if 'skipped_tiles_path' in kwargs and kwargs['skipped_tiles_path'] is not None:
+             skipped_tiles_path = kwargs['skipped_tiles_path']
+             if os.path.exists(skipped_tiles_path):
+                 with open(skipped_tiles_path, 'r') as f:
+                     lines = f.readlines()
+                     coords = []
+                     for line in lines:
+                         parts = line.strip().split()
+                         if len(parts) >= 2:
+                             coords.append([int(parts[0]), int(parts[1])])
+                     if len(coords) > 0:
+                         self.skipped_tiles = torch.tensor(coords, device=self.device, dtype=torch.int32)
+
 
         # load Gaussian model
         decompression_time = self.load_gaussian_model()  # minutes
@@ -148,7 +165,8 @@ class TesterCompGS:
             image_height=sample.image_height, image_width=sample.image_width,
             tanfovx=sample.tan_half_fov_x, tanfovy=sample.tan_half_fov_y, campos=sample.camera_center,
             cam_idx=sample.cam_idx,
-            viewmatrix=sample.world_to_view_proj_mat, projmatrix=sample.world_to_image_proj_mat)
+            viewmatrix=sample.world_to_view_proj_mat, projmatrix=sample.world_to_image_proj_mat,
+            skipped_tiles=self.skipped_tiles)
 
         rendered_img, predict_time, render_time = self.gaussian_model.render_inference(render_settings=render_settings)
         return rendered_img, predict_time, render_time

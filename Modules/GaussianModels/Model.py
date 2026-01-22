@@ -180,7 +180,8 @@ class GaussianModel(nn.Module):
             image_height=render_settings.image_height, image_width=render_settings.image_width,
             tanfovx=render_settings.tanfovx, tanfovy=render_settings.tanfovy, bg=self.background_colors,
             scale_modifier=scaling_modifier, viewmatrix=render_settings.viewmatrix, projmatrix=render_settings.projmatrix,
-            sh_degree=1, campos=render_settings.campos, prefiltered=False, debug=False)
+            sh_degree=1, campos=render_settings.campos, prefiltered=False, debug=False,
+            skipped_tiles=render_settings.skipped_tiles)
         rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
         # prefilter invisible anchor primitives
@@ -245,7 +246,8 @@ class GaussianModel(nn.Module):
             tanfovx=render_settings.tanfovx, tanfovy=render_settings.tanfovy, bg=self.background_colors,
             scale_modifier=scaling_modifier, viewmatrix=render_settings.viewmatrix,
             projmatrix=render_settings.projmatrix,
-            sh_degree=1, campos=render_settings.campos, prefiltered=False, debug=False)
+            sh_degree=1, campos=render_settings.campos, prefiltered=False, debug=False,
+            skipped_tiles=render_settings.skipped_tiles)
         rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
         # prefilter invisible anchor primitives
