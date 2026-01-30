@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from Modules.Common import BaseDataset, CustomLogger, Sample, RenderSettings
 from Modules.GaussianModels import GaussianModel
-from Modules.TrainerCompGS import TrainerCompGS
+from Modules.TrainerCompGS import TrainerCompGS, ssim_masked
 
 
 class TesterCompGS:
@@ -40,8 +40,10 @@ class TesterCompGS:
         # load skipped tiles
         self.skipped_tiles = None
         if 'skipped_tiles_path' in kwargs and kwargs['skipped_tiles_path'] is not None:
-             skipped_tiles_path = kwargs['skipped_tiles_path']
-             if os.path.exists(skipped_tiles_path):
+             skipped_tiles_path = str(kwargs['skipped_tiles_path'])
+             if skipped_tiles_path != '':
+                 if not os.path.exists(skipped_tiles_path):
+                     raise FileNotFoundError(f"Skipped tiles file not found at: {skipped_tiles_path}")
                  with open(skipped_tiles_path, 'r') as f:
                      lines = f.readlines()
                      coords = []
@@ -205,8 +207,9 @@ class TesterCompGS:
         psnr = 10 * torch.log10(1. / mse).item()
 
         # calculate rendering SSIM score
-        # SSIM is computed on the white-blended images as it operates on windows
-        ssim_score = ssim(original_img_blended, rendered_img_blended, data_range=1., size_average=True).item()
+        # Masked SSIM: ignore transparent pixels
+        mask = alpha_mask.unsqueeze(0)
+        ssim_score = ssim_masked(rendered_img.unsqueeze(0), original_img.unsqueeze(0), mask=mask, size_average=True).item()
 
         quality_scores = {'PSNR': psnr, 'SSIM': ssim_score}
         # calculate rendering LPIPS score

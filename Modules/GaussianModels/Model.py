@@ -188,6 +188,57 @@ class GaussianModel(nn.Module):
         radii_pure = rasterizer.visible_filter(means3D=self.means, scales=self.anchor_primitive_scales, rotations=self.rotations, cov3D_precomp=None)
         anchor_primitive_visible_mask = radii_pure > 0.
         assert anchor_primitive_visible_mask.shape[0] == self.num_anchor_primitive, f'Number of visible masks {anchor_primitive_visible_mask.shape[0]} should be the same as number of anchor primitives {self.num_anchor_primitive}.'
+        
+        num_anchors_frustum_visible = anchor_primitive_visible_mask.sum().item()
+
+        # Cull anchors with projected means within skipped tiles
+        if render_settings.cull_anchors_in_skipped_tiles and render_settings.skipped_tiles is not None and render_settings.skipped_tiles.numel() > 0:
+            visible_indices = torch.nonzero(anchor_primitive_visible_mask).squeeze()
+            if visible_indices.numel() > 0:
+                visible_means = self.means[visible_indices]
+                visible_means_hom = torch.cat([visible_means, torch.ones_like(visible_means[:, :1])], dim=1)
+                
+                # Project to clip space
+                p_hom = visible_means_hom @ render_settings.projmatrix
+                p_w = p_hom[:, 3:4] + 0.0000001
+                p_proj = p_hom[:, :3] / p_w
+                
+                # NDC to pixel coordinates
+                x_ndc = p_proj[:, 0]
+                y_ndc = p_proj[:, 1]
+                
+                H = render_settings.image_height
+                W = render_settings.image_width
+                
+                pixel_x = (x_ndc + 1.0) * 0.5 * W
+                pixel_y = (y_ndc + 1.0) * 0.5 * H
+                
+                tile_x = (pixel_x / 16.0).long()
+                tile_y = (pixel_y / 16.0).long()
+                
+                # Create mask grid for skipped tiles
+                max_h_tiles = (H + 15) // 16
+                max_w_tiles = (W + 15) // 16
+                tile_mask_grid = torch.zeros((max_h_tiles, max_w_tiles), dtype=torch.bool, device=self.device)
+                
+                st = render_settings.skipped_tiles.long()
+                # Filter invalid tiles
+                valid_st = (st[:, 0] >= 0) & (st[:, 0] < max_w_tiles) & (st[:, 1] >= 0) & (st[:, 1] < max_h_tiles)
+                st = st[valid_st]
+                
+                # Mark skipped tiles (st: [x, y])
+                tile_mask_grid[st[:, 1], st[:, 0]] = True
+                
+                # Check if anchors are in skipped tiles
+                tile_x_clamped = tile_x.clamp(0, max_w_tiles - 1)
+                tile_y_clamped = tile_y.clamp(0, max_h_tiles - 1)
+                
+                anchor_in_skipped = tile_mask_grid[tile_y_clamped, tile_x_clamped]
+                
+                # Update visible mask: exclude anchors in skipped tiles
+                anchor_primitive_visible_mask[visible_indices] = anchor_primitive_visible_mask[visible_indices] & (~anchor_in_skipped)
+
+        num_anchors_not_skipped = anchor_primitive_visible_mask.sum().item()
 
         means, scaling_factors_before_exp = self.means[anchor_primitive_visible_mask], self.scaling_factors_before_exp[anchor_primitive_visible_mask]
         ref_feats, res_feats = self.ref_feats[anchor_primitive_visible_mask], self.res_feats[anchor_primitive_visible_mask]
@@ -219,7 +270,9 @@ class GaussianModel(nn.Module):
             num_rendered=get_last_num_rendered(),
             num_evaluated=get_last_num_evaluated(),
             num_opaque=get_last_num_opaque(),
-            num_shaded=get_last_num_shaded()
+            num_shaded=get_last_num_shaded(),
+            num_anchors_frustum_visible=num_anchors_frustum_visible,
+            num_anchors_not_skipped=num_anchors_not_skipped
         )
 
         return render_results

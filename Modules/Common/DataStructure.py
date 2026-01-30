@@ -25,6 +25,7 @@ class RenderSettings:
     cam_idx: int  # camera id
     campos: torch.Tensor  # locations of camera center in world space, shape (3,)
     skipped_tiles: Optional[torch.Tensor] = None  # coordinates of skipped tiles, shape (N, 2)
+    cull_anchors_in_skipped_tiles: bool = False  # whether to cull anchors with projected means within skipped tiles
 
 
 @dataclass
@@ -89,3 +90,5 @@ class RenderResults:
     num_evaluated: int = 0
     num_opaque: int = 0
     num_shaded: int = 0
+    num_anchors_frustum_visible: int = 0
+    num_anchors_not_skipped: int = 0

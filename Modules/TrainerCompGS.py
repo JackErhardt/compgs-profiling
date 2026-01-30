@@ -2,6 +2,7 @@ import json
 import os
 import time
 import csv
+from math import exp
 from functools import partial
 
 import numpy as np
@@ -14,6 +15,54 @@ from tqdm import tqdm
 from Modules.Common import BaseDataset, AriaDataset, RenderSettings, RenderResults, Sample, init
 from Modules.GaussianModels import GaussianModel
 from Modules.Optimization import AdaptiveControl, WarpedAdam, update_lr_means
+
+
+def gaussian(window_size, sigma):
+    gauss = torch.Tensor([exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
+    return gauss / gauss.sum()
+
+
+def create_window(window_size, channel):
+    _1D_window = gaussian(window_size, 1.5).unsqueeze(1)
+    _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
+    window = _2D_window.expand(channel, 1, window_size, window_size).contiguous()
+    return window
+
+
+def ssim_masked(img1, img2, mask, window_size=11, size_average=True):
+    channel = img1.size(1)
+    window = create_window(window_size, channel)
+    
+    if img1.is_cuda:
+        window = window.cuda(img1.get_device())
+    window = window.type_as(img1)
+    
+    mu1 = F.conv2d(img1 * mask, window, padding=window_size//2, groups=channel)
+    mu2 = F.conv2d(img2 * mask, window, padding=window_size//2, groups=channel)
+
+    window_mask = create_window(window_size, 1).type_as(mask).to(mask.device)
+    mask_sum = F.conv2d(mask, window_mask, padding=window_size//2, groups=1)
+    
+    mu1_sq = mu1.pow(2) / (mask_sum.pow(2) + 1e-6)
+    mu2_sq = mu2.pow(2) / (mask_sum.pow(2) + 1e-6)
+    mu1_mu2 = mu1 * mu2 / (mask_sum.pow(2) + 1e-6)
+    
+    mu1 = mu1 / (mask_sum + 1e-6)
+    mu2 = mu2 / (mask_sum + 1e-6)
+    
+    sigma1_sq = F.conv2d(img1 * img1 * mask, window, padding=window_size//2, groups=channel) / (mask_sum + 1e-6) - mu1_sq
+    sigma2_sq = F.conv2d(img2 * img2 * mask, window, padding=window_size//2, groups=channel) / (mask_sum + 1e-6) - mu2_sq
+    sigma12 = F.conv2d(img1 * img2 * mask, window, padding=window_size//2, groups=channel) / (mask_sum + 1e-6) - mu1_mu2
+    
+    C1 = 0.01 ** 2
+    C2 = 0.03 ** 2
+    
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+    
+    if size_average:
+        return (ssim_map * mask).sum() / (mask.sum() * channel)
+    else:
+        return (ssim_map * mask).mean(1).mean(1).mean(1)
 
 
 class TrainerCompGS:
@@ -30,7 +79,9 @@ class TrainerCompGS:
         self.skipped_tiles = None
         if ('skipped_tiles_path' in self.configs['training']) and (self.configs['training']['skipped_tiles_path'] is not None):
              skipped_tiles_path = str(self.configs['training']['skipped_tiles_path'])
-             if skipped_tiles_path != 'None' and os.path.exists(skipped_tiles_path):
+             if skipped_tiles_path != '':
+                 if not os.path.exists(skipped_tiles_path):
+                     raise FileNotFoundError(f"Skipped tiles file not found at: {skipped_tiles_path}")
                  with open(skipped_tiles_path, 'r') as f:
                      lines = f.readlines()
                      coords = []
@@ -41,6 +92,8 @@ class TrainerCompGS:
                      if len(coords) > 0:
                          self.skipped_tiles = torch.tensor(coords, device='cuda' if self.configs['training']['gpu'] else 'cpu', dtype=torch.int32)
         
+        self.cull_anchors = self.configs['training'].get('cull_anchors', False)
+
         self.checkpoints_dir = self.experiment_dir.joinpath("point_cloud/")
         self.checkpoints_dir.mkdir(exist_ok=True)
 
@@ -112,12 +165,14 @@ class TrainerCompGS:
                 "RenderWidth",
                 "NAnchors",
                 "NAnchorsVisible",
+                "NAnchorsNotSkipped",
                 "NGaussiansVisible",
                 "NTileIntersections",
                 "NPixelIntersectionsCull1",
                 "NPixelIntersectionsCull2",
                 "NPixelIntersectionsCull3",
                 "NSkippedTiles",
+                "DynamicWeights",
                 "PSNR",
             ]
         )
@@ -154,7 +209,7 @@ class TrainerCompGS:
                 cam_idx=sample.cam_idx, image_height=sample.image_height, image_width=sample.image_width,
                 tanfovx=sample.tan_half_fov_x, tanfovy=sample.tan_half_fov_y, campos=sample.camera_center,
                 viewmatrix=sample.world_to_view_proj_mat, projmatrix=sample.world_to_image_proj_mat,
-                skipped_tiles=self.skipped_tiles)
+                skipped_tiles=self.skipped_tiles, cull_anchors_in_skipped_tiles=self.cull_anchors)
 
             retain_grad = iteration < self.configs['adaptive_control']['stop_iteration']
             # if iteration % 10 == 0: 
@@ -174,7 +229,7 @@ class TrainerCompGS:
             # Log runtime statistics
             with torch.no_grad():
                 num_anchors = self.gaussian_model.num_anchor_primitive
-                num_anchors_visible = render_results.anchor_primitive_visible_mask.sum().item()
+                num_anchors_visible = render_results.num_anchors_frustum_visible
                 num_gaussians_visible = render_results.visibility_mask.sum().item()
                 num_rendered = render_results.num_rendered
                 num_evaluated = render_results.num_evaluated
@@ -198,12 +253,14 @@ class TrainerCompGS:
                     "RenderWidth": sample.image_width,
                     "NAnchors": num_anchors,
                     "NAnchorsVisible": num_anchors_visible,
+                    "NAnchorsNotSkipped": render_results.num_anchors_not_skipped,
                     "NGaussiansVisible": num_gaussians_visible,
                     "NTileIntersections": num_rendered,
                     "NPixelIntersectionsCull1": num_evaluated,
                     "NPixelIntersectionsCull2": num_opaque,
                     "NPixelIntersectionsCull3": num_shaded,
                     "NSkippedTiles": num_skipped_tiles,
+                    "DynamicWeights": 0 if self.configs['training'].get('prediction_net_path') else 1,
                     "PSNR": -1,
                 })
                 self.csv_file_handle.flush()
@@ -350,10 +407,9 @@ class TrainerCompGS:
             # Masked L1 loss: ignore transparent pixels
             l1_loss = (torch.abs(pred_img - gt_img) * sample.alpha_mask).sum() / (sample.alpha_mask.sum() * 3.0 + 1e-6)
             
-            # Blended SSIM: blend with white background to handle transparency
-            gt_img = gt_img * sample.alpha_mask + (1 - sample.alpha_mask)
-            pred_img = pred_img * sample.alpha_mask + (1 - sample.alpha_mask)
-            ssim_loss = 1 - ssim(pred_img.unsqueeze(dim=0), gt_img.unsqueeze(dim=0), data_range=1., size_average=True)
+            # Masked SSIM: ignore transparent pixels
+            mask = sample.alpha_mask.unsqueeze(0)
+            ssim_loss = 1 - ssim_masked(pred_img.unsqueeze(dim=0), gt_img.unsqueeze(dim=0), mask=mask, size_average=True)
         else:
             l1_loss = F.l1_loss(pred_img, gt_img)
             ssim_loss = 1 - ssim(pred_img.unsqueeze(dim=0), gt_img.unsqueeze(dim=0), data_range=1., size_average=True)
