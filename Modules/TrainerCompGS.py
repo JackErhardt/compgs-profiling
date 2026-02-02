@@ -98,6 +98,8 @@ class TrainerCompGS:
         self.checkpoints_dir.mkdir(exist_ok=True)
 
         self.device = 'cuda' if self.configs['training']['gpu'] else 'cpu'
+        
+        training_ds = self.configs['training'].get('training_ds', "")
 
         # init train / eval dataset
         if self.configs['dataset']['sfm_type'] == 'aria':
@@ -110,7 +112,8 @@ class TrainerCompGS:
                 device=self.device,
                 eval_interval=self.configs['dataset']['eval_interval'],
                 img_height=self.configs['dataset'].get('img_height', -1),
-                img_width=self.configs['dataset'].get('img_width', -1)
+                img_width=self.configs['dataset'].get('img_width', -1),
+                training_ds=training_ds
             )
         else:
             self.dataset = BaseDataset(
@@ -118,7 +121,8 @@ class TrainerCompGS:
                 image_folder=self.configs['dataset']['image_folder'],
                 logger=self.logger,
                 device=self.device,
-                eval_interval=self.configs['dataset']['eval_interval']
+                eval_interval=self.configs['dataset']['eval_interval'],
+                training_ds=training_ds
             )
 
         # init Gaussian model

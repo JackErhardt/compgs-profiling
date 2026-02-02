@@ -31,6 +31,7 @@ training:
   prediction_net_path: "" # Path to a weights.pth file to initialize the prediction network
   skipped_tiles_path: "" # Path to a text file containing the list of tiles to be skipped during training
   cull_anchors: False # Whether to cull anchors based on the skipped tiles file
+  training_ds: "" # Type of training dataset augmentation to use, options are "average", "maxpool", "crop", or "" for none
 
   lr:  # Learning rate
     gaussian:  # Gaussian parameters

@@ -4,6 +4,7 @@ from collections import namedtuple
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from PIL import Image
 from torch.utils.data import Dataset
 
@@ -24,7 +25,7 @@ CAMERA_MODEL_NAMES = dict([(camera_model.model_name, camera_model) for camera_mo
 
 
 class BaseDataset(Dataset):
-    def __init__(self, root: str, image_folder: str, logger: CustomLogger, device: str,  eval_interval: int = 8, z_near: float = 0.01, z_far: float = 100) -> None:
+    def __init__(self, root: str, image_folder: str, logger: CustomLogger, device: str,  eval_interval: int = 8, z_near: float = 0.01, z_far: float = 100, training_ds: str = "") -> None:
         """
         Dataset for loading images and camera calibration matrices.
         :param root: path to the root folder of the dataset.
@@ -34,8 +35,10 @@ class BaseDataset(Dataset):
         :param eval_interval: interval of evaluated views, default is 8. If set to -1, evaluation will be performed on the training set (i.e., the training and evaluation sets are identical).
         :param z_near: distance between camera and near clipping plane, default is 0.01.
         :param z_far: distance between camera and far clipping plane, default is 100.
+        :param training_ds: downsampling method for training images, default is "". Options: "", "average", "maxpool", "crop".
         """
         self.root, self.logger, self.device, self.z_near, self.z_far = root, logger, device, z_near, z_far
+        self.training_ds = training_ds
         if not hasattr(self, 'image_folder'):
             self.image_folder = os.path.join(root, image_folder)
         self.logger.info('\nLoading data from {}...'.format(root))
@@ -71,6 +74,26 @@ class BaseDataset(Dataset):
         self.training = True  # flag to indicate if the dataset is in training mode
 
         logger.info(f'Loaded {len(self.train_samples)} training views and {len(self.test_samples)} evaluation views.')
+        
+        if self.training_ds and self.training_ds != "":
+             self.logger.info(f"Applying training downsampling: {self.training_ds}") 
+             for sample in self.train_samples.values():
+                if self.training_ds in ["average", "maxpool"]:
+                     sample.img_height //= 2
+                     sample.img_width //= 2
+                elif self.training_ds == "crop":
+                     sample.img_height //= 2
+                     sample.img_width //= 2
+                     
+                     sample.tan_half_fov_x /= 2.0
+                     sample.tan_half_fov_y /= 2.0
+                     sample.fov_x = 2 * np.arctan(sample.tan_half_fov_x)
+                     sample.fov_y = 2 * np.arctan(sample.tan_half_fov_y)
+                     
+                     # recalculate proj mats
+                     proj_mats = self.calculate_proj_mats(sample.rotation_mat, sample.translation_vec, sample.fov_x, sample.fov_y)
+                     sample.perspective_proj_mat = proj_mats['perspective_proj_mat']
+                     sample.world_to_image_proj_mat = proj_mats['world_to_image_proj_mat']
 
     def __getitem__(self, idx: int) -> Sample:
         """
@@ -98,8 +121,20 @@ class BaseDataset(Dataset):
                 img = torch.tensor(img_np[:, :, :3].transpose(2, 0, 1) / 255., dtype=torch.float, device=self.device).clamp_(min=0., max=1.)
             else:
                 img = torch.tensor(img_np.transpose(2, 0, 1) / 255., dtype=torch.float, device=self.device).clamp_(min=0., max=1.)
-                alpha_mask = torch.ones((1, sample.img_height, sample.img_width), dtype=torch.float, device=self.device)
-
+                alpha_mask = torch.ones((1, sample.img_height if not (self.training_ds in ["average", "maxpool", "crop"] and (img_np.shape[0] != sample.img_height or img_np.shape[1] != sample.img_width)) else sample.img_height * 2, sample.img_width if not (self.training_ds in ["average", "maxpool", "crop"] and (img_np.shape[0] != sample.img_height or img_np.shape[1] != sample.img_width)) else sample.img_width * 2), dtype=torch.float, device=self.device)
+        
+        if self.training_ds and (img.shape[1] != sample.img_height or img.shape[2] != sample.img_width):
+            if self.training_ds == "average":
+                img = F.avg_pool2d(img.unsqueeze(0), kernel_size=2, stride=2).squeeze(0)
+                alpha_mask = torch.ceil(F.avg_pool2d(alpha_mask.unsqueeze(0), kernel_size=2, stride=2)).squeeze(0)
+            elif self.training_ds == "maxpool":
+                img = F.max_pool2d(img.unsqueeze(0), kernel_size=2, stride=2).squeeze(0)
+                alpha_mask = torch.ceil(F.max_pool2d(alpha_mask.unsqueeze(0), kernel_size=2, stride=2)).squeeze(0)
+            elif self.training_ds == "crop":
+                h, w = img.shape[1], img.shape[2]
+                img = img[:, h//4 : h//4 + h//2, w//4 : w//4 + w//2]
+                alpha_mask = alpha_mask[:, h//4 : h//4 + h//2, w//4 : w//4 + w//2]
+        
         sample = Sample(img=img, alpha_mask=alpha_mask, image_height=sample.img_height, image_width=sample.img_width,
                         tan_half_fov_x=sample.tan_half_fov_x, tan_half_fov_y=sample.tan_half_fov_y,
                         camera_center=sample.camera_center, cam_idx=sample.cam_idx, screen_extent=self.screen_extent,
@@ -328,7 +363,7 @@ class AriaDataset(BaseDataset):
 
     def __init__(self, root: str, vrs_path: str, closedloop_path: str, image_folder: str, logger: CustomLogger, device: str, 
                  eval_interval: int = 8, z_near: float = 0.01, z_far: float = 100,
-                 img_height: int = -1, img_width: int = -1):
+                 img_height: int = -1, img_width: int = -1, training_ds: str = ""):
         self.vrs_path = os.path.join(root, vrs_path)
         self.closedloop_path = os.path.join(root, closedloop_path)
         self.image_folder = os.path.join(root, image_folder)
@@ -337,7 +372,7 @@ class AriaDataset(BaseDataset):
         self.img_width_override = img_width
 
         # Call BaseDataset constructor with dummy paths (we override load_samples)
-        super().__init__(root="", image_folder="", logger=logger, device=device, eval_interval=eval_interval, z_near=z_near, z_far=z_far)
+        super().__init__(root="", image_folder="", logger=logger, device=device, eval_interval=eval_interval, z_near=z_near, z_far=z_far, training_ds=training_ds)
 
         semidense_path = os.path.join(root, 'mps', 'slam', 'semidense_points.csv.gz')
         if os.path.exists(semidense_path):
